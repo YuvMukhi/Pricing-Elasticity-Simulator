@@ -7,3 +7,4 @@ seaborn
 pytest
 openpyxl
 requests
+SQLAlchemy

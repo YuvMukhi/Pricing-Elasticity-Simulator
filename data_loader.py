@@ -134,7 +134,10 @@ def add_derived_features(df):
                                      else 'Summer' if x in [6, 7, 8] 
                                      else 'Autumn')
     
+    df['Season_original'] = df['Season']
     df = pd.get_dummies(df, columns=['Season'], drop_first=False)
+    df['Season'] = df['Season_original']
+    df = df.drop(columns=['Season_original'])
     for s in ['Season_Spring', 'Season_Summer', 'Season_Autumn', 'Season_Winter']:
         if s not in df.columns:
             df[s] = 0
@@ -160,8 +163,30 @@ def get_processed_data(file_path='online_retail.csv'):
     df_final = add_derived_features(df_weekly)
     return df_final
 
+from db_setup import get_engine
+
 if __name__ == "__main__":
     df = get_processed_data()
-    print("Data processing complete. Saving to processed_data.csv")
-    df.to_csv("processed_data.csv", index=False)
-    print(df.head())
+    print("Data processing complete. Saving to SQLite database...")
+    
+    # Rename columns to match schema
+    df = df.rename(columns={
+        'StockCode': 'sku',
+        'Week': 'week_start_date',
+        'Quantity': 'quantity',
+        'UnitPrice': 'unit_price',
+        'UnitCost': 'cost',
+        'Promo': 'promo_flag',
+        'Season': 'season'
+    })
+    
+    df['revenue'] = df['quantity'] * df['unit_price']
+    df['margin'] = df['quantity'] * (df['unit_price'] - df['cost'])
+    
+    cols = ['sku', 'week_start_date', 'quantity', 'unit_price', 'cost', 'promo_flag', 'season', 'revenue', 'margin']
+    df_to_save = df[cols].copy()
+    
+    engine = get_engine()
+    df_to_save.to_sql('sku_weekly_sales', con=engine, if_exists='replace', index=False)
+    print("Saved to sku_weekly_sales in SQLite.")
+

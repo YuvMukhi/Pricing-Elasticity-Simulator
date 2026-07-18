@@ -10,34 +10,30 @@ Retailers often make pricing and promotion decisions based on intuition or simpl
 1. **Data Ingestion & Cleaning (`data_loader.py`)**
    - Automatically downloads the UCI Online Retail dataset or generates a statistically robust synthetic dataset if the network is unavailable.
    - Cleans the data by dropping cancelled orders and aggregating to SKU-week granularity (a stable unit of analysis that smooths daily noise while preserving price variation).
-   - **Assumptions**: Since the UCI dataset lacks product cost and explicit promo flags, this module synthesizes a `UnitCost` (at 60% of the historical median price) and a `Promo` flag (triggered when a weekly price drops >10% below the median).
+   - Writes the processed output to a local SQLite database table `sku_weekly_sales`.
 
 2. **Elasticity Estimation (`elasticity_estimator.py`)**
-   - Uses `statsmodels` to run a log-log regression for each SKU: $\log(Q) = \beta_0 + \beta_1 \log(P) + \beta_2 \text{Promo} + \beta_{Seasons}$.
-   - The coefficient $\beta_1$ represents the price elasticity.
-   - Applies an analytical reliability filter: SKUs with positive elasticities, highly unstable standard errors, or insufficient price variation are explicitly flagged as unreliable and excluded from recommendations.
+   - Uses `statsmodels` to run a log-log regression for each SKU.
+   - Analytically simulates and identifies the optimal price points for both Revenue and Margin maximization.
+   - Writes the results directly to the SQLite table `elasticity_results`.
 
-3. **Simulation Engine (`simulation_engine.py`)**
-   - A standalone, testable module that projects volume, revenue, and margin across a range of hypothetical price changes (-20% to +20%).
-   - Identifies divergent optimal price points (e.g., the price that maximizes revenue vs. the price that maximizes margin).
+3. **SQL Analytics Layer**
+   - We utilize a local **SQLite database** (`pricing_simulator.db`) mapped via **SQLAlchemy**. SQLite was chosen because it allows for full standard SQL analytical capabilities without requiring external server setup or networking overhead, making the tool portable and fast.
+   - `queries.sql` contains a series of well-commented analytical SQL queries representing questions a business stakeholder would typically ask, such as:
+     - *Top 10 SKUs by projected revenue upside.*
+     - *SKUs currently priced above their margin-optimal price.*
+     - *Average elasticity by season to verify stability.*
+   - `query_runner.py` parses and executes these named queries directly into Pandas DataFrames, cleanly decoupling SQL logic from Python application code.
 
-4. **Promotion Effectiveness (`promo_effectiveness.py`)**
-   - Calculates true promo lift by matching on season.
-   - Identifies "demand pull-forward" (cannibalization) by flagging SKUs where sales drop significantly in the weeks immediately following a promotion.
-
-5. **Interactive Dashboard (`app.py`)**
-   - A Streamlit app that brings the models to life with interactive sliders, visualizations, and automated natural-language recommendations.
+4. **Interactive Dashboard (`app.py`)**
+   - A multi-page Streamlit application fully backed by the local SQLite database.
+   - **Portfolio View**: A high-level macro view showing all reliable SKUs, dynamically color-coding pricing status (Overpriced, Underpriced, Near-Optimal), and summarizing total potential revenue upside. This is crucial for business stakeholders deciding where to focus attention first.
+   - **SKU Deep Dive**: A detailed simulator that visualizes the optimal revenue and margin curves for a specific product, alongside promotion effectiveness metrics.
 
 ## Concrete Commercial Findings
 Using the synthetic/retail data approach, you will commonly find:
 - **Margin vs. Revenue Divergence**: For highly elastic SKUs (elasticity < -2.0), a moderate price cut often increases total revenue but erodes total margin, highlighting the danger of revenue-chasing without cost awareness.
 - **Cannibalization**: Some SKUs show high promotional lift but suffer a "post-promo dip," indicating the promotion merely pulled future full-price sales forward rather than generating net-new demand.
-
-## Limitations & Future Enhancements
-As a decision analyst, it is critical to state where the model's assumptions break:
-1. **Competitor Reaction**: The simulation assumes competitors hold their prices constant. In reality, a 20% price cut might trigger a price war.
-2. **Inventory Constraints**: The model projects unconstrained demand. It does not account for stockouts or supply chain limits if volume spikes.
-3. **Causal Inference**: The promotion lift uses a simple before/after control. A more advanced design would use propensity matching or a controlled synthetic control group to isolate pure causal lift.
 
 ## Running the Project Locally
 
@@ -45,6 +41,6 @@ As a decision analyst, it is critical to state where the model's assumptions bre
 pip install -r requirements.txt
 python data_loader.py
 python elasticity_estimator.py
-pytest test_simulation.py
+pytest test_db.py test_simulation.py
 streamlit run app.py
 ```

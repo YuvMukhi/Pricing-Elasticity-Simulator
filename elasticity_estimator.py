@@ -1,34 +1,42 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+from db_setup import get_engine
+from simulation_engine import simulate_financials, find_optimal_prices
 
 def estimate_elasticities(df):
     """
     Estimates price elasticity per SKU using a log-log regression.
-    Equation: log(Q) = b0 + b1*log(P) + b2*Promo + seasons
+    Reads from SQLite 'sku_weekly_sales' format.
     """
     results = []
     
-    sku_counts = df['StockCode'].value_counts()
-    # Require at least 10 weeks of data
+    sku_counts = df['sku'].value_counts()
     valid_skus = sku_counts[sku_counts >= 10].index
     
+    # Re-create dummies for regression if not present
+    if 'Season_Spring' not in df.columns:
+        # Create dummies on the fly
+        df_season = pd.get_dummies(df['season'], prefix='Season', drop_first=False)
+        df = pd.concat([df, df_season], axis=1)
+        for s in ['Season_Spring', 'Season_Summer', 'Season_Autumn', 'Season_Winter']:
+            if s not in df.columns:
+                df[s] = 0
+    
     for sku in valid_skus:
-        sku_data = df[df['StockCode'] == sku].copy()
+        sku_data = df[df['sku'] == sku].copy()
         
-        # Check price variation (CV > 2%)
-        price_std = sku_data['UnitPrice'].std()
-        price_mean = sku_data['UnitPrice'].mean()
+        price_std = sku_data['unit_price'].std()
+        price_mean = sku_data['unit_price'].mean()
         if price_mean == 0 or pd.isna(price_std) or (price_std / price_mean) < 0.02:
-            print(f"Skipping {sku}: Insufficient price variation (std: {price_std}, mean: {price_mean})")
+            print(f"Skipping {sku}: Insufficient price variation")
             continue
             
-        sku_data['log_Q'] = np.log(sku_data['Quantity'])
-        sku_data['log_P'] = np.log(sku_data['UnitPrice'])
+        sku_data['log_Q'] = np.log(sku_data['quantity'])
+        sku_data['log_P'] = np.log(sku_data['unit_price'])
         
-        # Use available season columns
         season_cols = [c for c in ['Season_Spring', 'Season_Summer', 'Season_Winter'] if c in sku_data.columns]
-        features = ['log_P', 'Promo'] + season_cols
+        features = ['log_P', 'promo_flag'] + season_cols
         
         X = sku_data[features].astype(float)
         X = sm.add_constant(X)
@@ -48,21 +56,48 @@ def estimate_elasticities(df):
             ci_width = ci[1] - ci[0]
             reliable = True
             
-            # Analytical judgment: Flag if elasticity is positive (Giffen/Veblen behavior or noise),
-            # or if the confidence interval is implausibly wide.
             if elasticity > 0 or ci_width > 5 or p_value > 0.20:
                 reliable = False
                 
+            # Current KPIs
+            latest = sku_data.sort_values('week_start_date').tail(4)
+            current_price = latest['unit_price'].mean()
+            current_vol = latest['quantity'].mean()
+            unit_cost = latest['cost'].mean()
+            
+            # Simulate optimal prices
+            if reliable:
+                sim_df = simulate_financials(current_vol, current_price, unit_cost, elasticity)
+                opts = find_optimal_prices(sim_df)
+                rev_optimal_price = opts['Revenue_Max_Price']
+                rev_upside = opts['Max_Revenue'] - (current_price * current_vol)
+                margin_optimal_price = opts['Margin_Max_Price']
+                margin_upside = opts['Max_Margin'] - (current_vol * (current_price - unit_cost))
+            else:
+                rev_optimal_price = current_price
+                rev_upside = 0.0
+                margin_optimal_price = current_price
+                margin_upside = 0.0
+                
+            # Use 'description' from df if available, else placeholder
+            description = sku_data['description'].iloc[0] if 'description' in sku_data.columns else f"Product_{sku}"
+
             results.append({
-                'StockCode': sku,
-                'Description': sku_data['Description'].iloc[0],
-                'Elasticity': elasticity,
-                'CI_Lower': ci[0],
-                'CI_Upper': ci[1],
-                'P_Value': p_value,
-                'R_Squared': r_squared,
-                'Reliable': reliable,
-                'Data_Points': len(sku_data)
+                'sku': sku,
+                'description': description,
+                'elasticity': elasticity,
+                'ci_lower': ci[0],
+                'ci_upper': ci[1],
+                'p_value': p_value,
+                'r_squared': r_squared,
+                'reliability_flag': int(reliable),
+                'current_price': current_price,
+                'current_volume': current_vol,
+                'unit_cost': unit_cost,
+                'rev_optimal_price': rev_optimal_price,
+                'rev_upside': rev_upside,
+                'margin_optimal_price': margin_optimal_price,
+                'margin_upside': margin_upside
             })
         except Exception as e:
             print(f"Skipping {sku} due to fit error: {e}")
@@ -70,22 +105,23 @@ def estimate_elasticities(df):
             
     if not results:
         print("Warning: No SKUs were successfully processed.")
-        return pd.DataFrame(columns=['StockCode', 'Elasticity', 'Reliable'])
+        return pd.DataFrame(columns=['sku', 'elasticity', 'reliability_flag'])
         
-    results_df = pd.DataFrame(results)
-    return results_df
+    return pd.DataFrame(results)
 
 if __name__ == "__main__":
-    print("Loading processed_data.csv...")
+    print("Connecting to SQLite database to read sku_weekly_sales...")
+    engine = get_engine()
     try:
-        df = pd.read_csv("processed_data.csv")
-        print("Estimating elasticities...")
+        df = pd.read_sql_table('sku_weekly_sales', con=engine)
+        print("Estimating elasticities and simulating optimals...")
         results = estimate_elasticities(df)
-        results.to_csv("elasticity_results.csv", index=False)
-        print("Elasticity estimation complete. Results saved to elasticity_results.csv.")
+        
+        results.to_sql('elasticity_results', con=engine, if_exists='replace', index=False)
+        print("Elasticity estimation complete. Saved to 'elasticity_results' table in SQLite.")
+        
         print(f"Total SKUs processed: {len(results)}")
-        if 'Reliable' in results.columns:
-            print(f"Reliable SKUs: {results['Reliable'].sum()}")
-        print(results.head())
-    except FileNotFoundError:
-        print("processed_data.csv not found. Please run data_loader.py first.")
+        if 'reliability_flag' in results.columns:
+            print(f"Reliable SKUs: {results['reliability_flag'].sum()}")
+    except Exception as e:
+        print(f"Error during elasticity estimation: {e}")
