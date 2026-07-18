@@ -2,8 +2,13 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from db_setup import get_engine
+from config_loader import config
 
-def run_backtest(holdout_weeks=4, mape_threshold=0.35):
+def run_backtest(holdout_weeks=None, mape_threshold=None):
+    if holdout_weeks is None:
+        holdout_weeks = config['backtesting']['holdout_weeks']
+    if mape_threshold is None:
+        mape_threshold = config['backtesting']['high_error_threshold_mape']
     engine = get_engine()
     
     df_sales = pd.read_sql_query("SELECT * FROM sku_weekly_sales", engine)

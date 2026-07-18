@@ -1,11 +1,15 @@
 from scipy.optimize import minimize_scalar
 from simulation_engine import simulate_demand
+from config_loader import config
 
-def find_constrained_optimal_price(current_volume, current_price, unit_cost, elasticity, min_margin_pct=0.30):
+def find_constrained_optimal_price(current_volume, current_price, unit_cost, elasticity, min_margin_pct=None):
     """
     Finds the revenue-maximizing price change bounded by a minimum margin percentage.
     Uses minimize_scalar bounded search over a realistic range of price changes.
     """
+    if min_margin_pct is None:
+        min_margin_pct = config['optimization']['margin_constraint_threshold']
+
     def objective(price_change_pct):
         new_price = current_price * (1 + price_change_pct)
         new_volume = simulate_demand(current_volume, current_price, price_change_pct, elasticity)

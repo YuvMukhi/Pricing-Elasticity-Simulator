@@ -1,0 +1,21 @@
+simulation:
+  min_pct: -0.20
+  max_pct: 0.20
+  step_size: 0.05
+
+elasticity:
+  min_weeks_data: 10
+  min_price_std_pct: 0.02
+  max_ci_width: 5.0
+  p_value_threshold: 0.20
+
+data:
+  cost_margin_assumption: 0.60
+  promo_detection_threshold: 0.90 # 10% below median
+
+optimization:
+  margin_constraint_threshold: 0.30
+
+backtesting:
+  holdout_weeks: 4
+  high_error_threshold_mape: 0.35

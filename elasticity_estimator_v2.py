@@ -19,17 +19,30 @@ def estimate_elasticities(df):
             if s not in df.columns:
                 df[s] = 0
     
-    for sku in valid_skus:
+    from config_loader import config
+    
+    min_weeks = config['elasticity']['min_weeks_data']
+    min_std = config['elasticity']['min_price_std_pct']
+    max_ci = config['elasticity']['max_ci_width']
+    p_val_thresh = config['elasticity']['p_value_threshold']
+    
+    for sku in df['sku'].unique():
         sku_data = df[df['sku'] == sku].copy()
         
-        price_std = sku_data['unit_price'].std()
+        # 1. Filter: At least N weeks of data
+        if len(sku_data) < min_weeks:
+            continue
+            
+        # 2. Filter: Sufficient price variation (e.g., standard deviation > 2% of mean)
         price_mean = sku_data['unit_price'].mean()
-        if price_mean == 0 or pd.isna(price_std) or (price_std / price_mean) < 0.02:
+        price_std = sku_data['unit_price'].std()
+        if price_mean == 0 or pd.isna(price_std) or (price_std / price_mean) < min_std:
             continue
             
         sku_data['log_Q'] = np.log(sku_data['quantity'])
         sku_data['log_P'] = np.log(sku_data['unit_price'])
         
+        # Features
         season_cols = [c for c in ['Season_Spring', 'Season_Summer', 'Season_Winter'] if c in sku_data.columns]
         features = ['log_P', 'promo_flag'] + season_cols
         
@@ -40,21 +53,24 @@ def estimate_elasticities(df):
         y = sku_data['log_Q'].astype(float)
         
         try:
-            # 1. OLS
+            # Fit OLS
             model_ols = sm.OLS(y, X_with_const).fit()
             if 'log_P' not in model_ols.params:
                 continue
                 
             elasticity_ols = model_ols.params['log_P']
+            p_val = model_ols.pvalues['log_P']
             ci = model_ols.conf_int().loc['log_P']
+            ci_lower, ci_upper = ci[0], ci[1]
+            ci_width = ci_upper - ci_lower
             r_squared_ols = model_ols.rsquared
             
-            ci_width = ci[1] - ci[0]
+            # 3. Filter: Plausible elasticity and statistical significance
             reliable = True
-            if elasticity_ols > 0 or ci_width > 5 or model_ols.pvalues['log_P'] > 0.20:
+            if elasticity_ols >= 0 or p_val > p_val_thresh or ci_width > max_ci:
                 reliable = False
                 
-            # 2. RidgeCV
+            # RidgeCV
             alphas = [0.1, 1.0, 10.0, 100.0]
             model_ridge = RidgeCV(alphas=alphas, cv=5)
             model_ridge.fit(X, y)

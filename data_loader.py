@@ -142,13 +142,16 @@ def add_derived_features(df):
         if s not in df.columns:
             df[s] = 0
             
-    sku_medians = df.groupby('StockCode')['UnitPrice'].transform('median')
+    from config_loader import config
     
-    # Unit Cost: 60% of historical median price
-    df['UnitCost'] = sku_medians * 0.60
+    # Add Cost (Assume margin from config for synthetic purposes if missing)
+    cost_margin = config['data']['cost_margin_assumption']
+    df['UnitCost'] = df['UnitPrice'] * (1 - cost_margin)
     
-    # Promo Flag: True if price is >10% below historical median
-    df['Promo'] = (df['UnitPrice'] < (sku_medians * 0.90)).astype(int)
+    # Simple promo flag: 1 if price is >X% below median price for that SKU
+    threshold_pct = config['data']['promo_detection_threshold']
+    median_price = df.groupby('StockCode')['UnitPrice'].transform('median')
+    df['Promo'] = (df['UnitPrice'] < median_price * threshold_pct).astype(int)
     
     return df
 

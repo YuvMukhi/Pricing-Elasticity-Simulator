@@ -47,6 +47,25 @@ Using the synthetic/retail data approach, you will commonly find:
 - **Margin vs. Revenue Divergence**: For highly elastic SKUs (elasticity < -2.0), a moderate price cut often increases total revenue but erodes total margin, highlighting the danger of revenue-chasing without cost awareness.
 - **Cannibalization**: Some SKUs show high promotional lift but suffer a "post-promo dip," indicating the promotion merely pulled future full-price sales forward rather than generating net-new demand.
 
+## Configuration & Deployment
+
+The tool is completely configurable via `config.yaml` located at the project root. This allows you to tune assumptions (e.g., minimum margin thresholds, pricing simulation ranges, and backtest windows) without altering any Python code. 
+
+### Running Locally with Docker
+
+You can easily deploy this simulator as an isolated container using Docker. A lightweight `python:3.12-slim` image handles all dependencies and sets up the Streamlit server automatically.
+
+**Build the Image:**
+```bash
+docker build -t pricing-simulator .
+```
+
+**Run the Container:**
+```bash
+docker run -p 8501:8501 pricing-simulator
+```
+The dashboard will be available at `http://localhost:8501`.
+
 ## Running the Project Locally
 
 ```bash

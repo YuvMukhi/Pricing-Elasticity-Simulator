@@ -1,25 +1,29 @@
 import pandas as pd
 import numpy as np
+from config_loader import config
 
-def simulate_demand(current_volume, current_price, price_change_pct, elasticity):
+def simulate_demand(current_vol, current_price, price_change_pct, elasticity):
     """
-    Standard approximation: % change in Q = Elasticity * % change in P.
-    Q_new = Q_old * (1 + Elasticity * price_change_pct)
+    Predicts new volume based on a percentage price change and price elasticity.
+    Formula: Q_new = Q_old * (1 + Elasticity * Price_Change_Pct)
     """
-    new_volume = current_volume * (1 + elasticity * price_change_pct)
-    return max(0, new_volume)
+    new_vol = current_vol * (1 + (elasticity * price_change_pct))
+    return max(new_vol, 0) # Volume cannot be negative
 
-def simulate_financials(current_volume, current_price, unit_cost, elasticity, price_changes=None):
+def simulate_financials(current_vol, current_price, unit_cost, elasticity, price_changes=None):
     """
-    Simulates revenue and margin over a range of price changes.
+    Simulates Revenue and Margin across a range of price changes.
     """
     if price_changes is None:
-        price_changes = np.arange(-0.20, 0.25, 0.05)
+        sim_min = config['simulation']['min_pct']
+        sim_max = config['simulation']['max_pct']
+        step = config['simulation']['step_size']
+        price_changes = np.arange(sim_min, sim_max + step, step)
         
     results = []
     for dp in price_changes:
         new_price = current_price * (1 + dp)
-        new_volume = simulate_demand(current_volume, current_price, dp, elasticity)
+        new_volume = simulate_demand(current_vol, current_price, dp, elasticity)
         new_revenue = new_volume * new_price
         new_margin = new_volume * (new_price - unit_cost)
         
