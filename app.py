@@ -6,6 +6,7 @@ import seaborn as sns
 from query_runner import run_query
 from db_setup import get_engine
 from simulation_engine import simulate_financials, find_optimal_prices
+from promo_effectiveness import analyze_promo_significance
 import query_runner
 
 st.set_page_config(page_title="Pricing & Promotion Simulator", layout="wide")
@@ -149,6 +150,24 @@ elif page == "SKU Deep Dive":
         ax2.legend(lines + lines2, labels + labels2, loc='upper right')
         
         st.pyplot(fig)
+        
+        # Promotion Impact Panel
+        st.divider()
+        st.subheader("Promotion Impact Analysis")
+        
+        promo_stats = analyze_promo_significance(sku_data)
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Base Volume (Avg)", f"{promo_stats['base_volume']:.1f}")
+        c2.metric("Promo Volume (Avg)", f"{promo_stats['promo_volume']:.1f}")
+        c3.metric("Promo Lift", f"{promo_stats['lift_pct']:.1%}")
+        
+        if promo_stats['significant']:
+            c4.success(f"Statistically Significant\n(p = {promo_stats['p_value']:.3f})")
+        else:
+            c4.warning(f"Likely Noise\n(p = {promo_stats['p_value']:.3f})")
+            
+        st.markdown(f"**Two-Sample T-Statistic**: {promo_stats['t_stat']:.2f}")
         
     except Exception as e:
         st.error(f"Error loading deep dive: {e}")

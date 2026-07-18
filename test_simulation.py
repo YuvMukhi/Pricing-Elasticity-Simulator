@@ -34,3 +34,15 @@ def test_constrained_optimal_price():
     assert margin_pct >= 0.299
     assert constrained_price > current_price
 
+
+from promo_effectiveness import analyze_promo_significance
+import pandas as pd
+
+def test_analyze_promo_significance():
+    df = pd.DataFrame({'quantity': [10, 12, 11, 20, 22, 21], 'promo_flag': [0, 0, 0, 1, 1, 1]})
+    stats = analyze_promo_significance(df)
+    assert stats['base_volume'] == 11.0
+    assert stats['promo_volume'] == 21.0
+    assert stats['lift_pct'] > 0.9
+    assert stats['significant'] == True
+

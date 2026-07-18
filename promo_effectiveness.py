@@ -1,94 +1,40 @@
 import pandas as pd
-import numpy as np
+from scipy import stats
 
-def calculate_promo_lift(df):
+def analyze_promo_significance(sku_data):
     """
-    Compares average sales during promo weeks vs baseline (non-promo) weeks.
-    Matches on Season to avoid conflating promo lift with seasonal demand.
+    Analyzes the statistical significance of promotional lift using a two-sample t-test.
+    Expects a DataFrame with 'quantity' and 'promo_flag' columns.
     """
-    results = []
+    if 'promo_flag' not in sku_data.columns or 'quantity' not in sku_data.columns:
+        raise ValueError("DataFrame must contain 'promo_flag' and 'quantity'")
+        
+    promo_data = sku_data[sku_data['promo_flag'] == 1]['quantity']
+    base_data = sku_data[sku_data['promo_flag'] == 0]['quantity']
     
-    for sku in df['StockCode'].unique():
-        sku_data = df[df['StockCode'] == sku].copy()
+    if len(promo_data) < 2 or len(base_data) < 2:
+        return {
+            'base_volume': base_data.mean() if len(base_data) > 0 else 0,
+            'promo_volume': promo_data.mean() if len(promo_data) > 0 else 0,
+            'lift_pct': 0.0,
+            't_stat': 0.0,
+            'p_value': 1.0,
+            'significant': False
+        }
         
-        if sku_data['Promo'].nunique() < 2:
-            continue
-            
-        for season in sku_data['Season'].unique():
-            season_data = sku_data[sku_data['Season'] == season].copy()
-            
-            promo_data = season_data[season_data['Promo'] == 1]
-            base_data = season_data[season_data['Promo'] == 0]
-            
-            if len(promo_data) == 0 or len(base_data) == 0:
-                continue
-                
-            avg_promo_qty = promo_data['Quantity'].mean()
-            avg_base_qty = base_data['Quantity'].mean()
-            
-            lift = (avg_promo_qty - avg_base_qty) / avg_base_qty if avg_base_qty > 0 else 0
-            
-            avg_promo_price = promo_data['UnitPrice'].mean()
-            avg_base_price = base_data['UnitPrice'].mean()
-            avg_cost = promo_data['UnitCost'].mean()
-            
-            base_margin = avg_base_qty * (avg_base_price - avg_cost)
-            promo_margin = avg_promo_qty * (avg_promo_price - avg_cost)
-            inc_margin = promo_margin - base_margin
-            
-            discount_cost = (avg_base_price - avg_promo_price) * avg_promo_qty
-            roi = inc_margin / discount_cost if discount_cost > 0 else 0
-            
-            results.append({
-                'StockCode': sku,
-                'Description': sku_data['Description'].iloc[0],
-                'Season': season,
-                'Avg_Base_Qty': avg_base_qty,
-                'Avg_Promo_Qty': avg_promo_qty,
-                'Lift': lift,
-                'Discount_Cost': discount_cost,
-                'Inc_Margin': inc_margin,
-                'ROI': roi
-            })
-            
-    return pd.DataFrame(results)
-
-def analyze_forward_buying(df):
-    """
-    Checks if sales drop significantly in the weeks following a promotion.
-    """
-    df = df.sort_values(by=['StockCode', 'Week']).copy()
-    df['Prev_Week_Promo'] = df.groupby('StockCode')['Promo'].shift(1)
-    df['Is_Post_Promo'] = ((df['Promo'] == 0) & (df['Prev_Week_Promo'] == 1)).astype(int)
+    base_mean = base_data.mean()
+    promo_mean = promo_data.mean()
     
-    results = []
-    for sku in df['StockCode'].unique():
-        sku_data = df[df['StockCode'] == sku]
-        
-        baseline_qty = sku_data[(sku_data['Promo'] == 0) & (sku_data['Is_Post_Promo'] == 0)]['Quantity'].mean()
-        post_promo_qty = sku_data[sku_data['Is_Post_Promo'] == 1]['Quantity'].mean()
-        
-        if pd.isna(baseline_qty) or pd.isna(post_promo_qty):
-            continue
-            
-        drop_pct = (baseline_qty - post_promo_qty) / baseline_qty if baseline_qty > 0 else 0
-        
-        results.append({
-            'StockCode': sku,
-            'Forward_Buying_Flag': drop_pct > 0.15,
-            'Post_Promo_Drop_Pct': drop_pct
-        })
-        
-    return pd.DataFrame(results)
-
-if __name__ == "__main__":
-    df = pd.read_csv("processed_data.csv")
-    df['Week'] = pd.to_datetime(df['Week'])
+    lift_pct = ((promo_mean - base_mean) / base_mean) if base_mean > 0 else 0
     
-    lift_df = calculate_promo_lift(df)
-    fb_df = analyze_forward_buying(df)
+    # Welch's t-test (unequal variances)
+    t_stat, p_value = stats.ttest_ind(promo_data, base_data, equal_var=False)
     
-    print("Promo Lift Sample:")
-    print(lift_df.head())
-    print("\nForward Buying Sample:")
-    print(fb_df.head())
+    return {
+        'base_volume': base_mean,
+        'promo_volume': promo_mean,
+        'lift_pct': lift_pct,
+        't_stat': t_stat,
+        'p_value': p_value,
+        'significant': bool(p_value < 0.05)
+    }

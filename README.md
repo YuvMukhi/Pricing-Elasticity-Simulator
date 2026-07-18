@@ -33,7 +33,11 @@ Retailers often make pricing and promotion decisions based on intuition or simpl
      - *Average elasticity by season to verify stability.*
    - `query_runner.py` parses and executes these named queries directly into Pandas DataFrames, cleanly decoupling SQL logic from Python application code.
 
-4. **Interactive Dashboard (`app.py`)**
+4. **Statistical Rigor & Validation**
+   - **Out-of-Sample Backtesting (`backtesting.py`)**: For each reliable SKU, the tool holds out the last 4 weeks of data, refits the OLS model on the remaining training data, and predicts demand for the holdout period. This calculates an out-of-sample MAPE and RMSE. High backtest error (>35% MAPE) flags SKUs whose full-sample R² might look good but fail to generalize to future data.
+   - **Promotion Significance Testing (`promo_effectiveness.py`)**: Computes a Welch's two-sample t-test comparing weekly sales volume during promotional periods versus non-promotional periods. It surfaces a p-value and flags statistically significant lifts (p < 0.05), helping stakeholders distinguish genuine ROI from random noise.
+   
+5. **Interactive Dashboard (`app.py`)**
    - A multi-page Streamlit application fully backed by the local SQLite database.
    - **Portfolio View**: A high-level macro view showing all reliable SKUs, dynamically color-coding pricing status (Overpriced, Underpriced, Near-Optimal), and summarizing total potential revenue upside. This is crucial for business stakeholders deciding where to focus attention first.
    - **SKU Deep Dive**: A detailed simulator that visualizes the optimal revenue and margin curves for a specific product, alongside promotion effectiveness metrics.
