@@ -1,0 +1,9 @@
+pandas
+numpy
+statsmodels
+streamlit
+matplotlib
+seaborn
+pytest
+openpyxl
+requests
