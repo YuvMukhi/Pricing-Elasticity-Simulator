@@ -51,6 +51,7 @@ if page == "Portfolio View":
             'current_price': '${:.2f}',
             'rev_optimal_price': '${:.2f}',
             'margin_optimal_price': '${:.2f}',
+            'constrained_optimal_price': '${:.2f}',
             'rev_upside': '${:,.0f}',
             'margin_upside': '${:,.0f}'
         })

@@ -12,10 +12,18 @@ Retailers often make pricing and promotion decisions based on intuition or simpl
    - Cleans the data by dropping cancelled orders and aggregating to SKU-week granularity (a stable unit of analysis that smooths daily noise while preserving price variation).
    - Writes the processed output to a local SQLite database table `sku_weekly_sales`.
 
-2. **Elasticity Estimation (`elasticity_estimator.py`)**
-   - Uses `statsmodels` to run a log-log regression for each SKU.
-   - Analytically simulates and identifies the optimal price points for both Revenue and Margin maximization.
+2. **Elasticity Estimation (`elasticity_estimator_v2.py`)**
+   - Uses `statsmodels` to run a log-log Ordinary Least Squares (OLS) regression for each SKU.
+   - Evaluates a Ridge regression model (`sklearn.linear_model.RidgeCV`) using 5-fold cross-validation to select the optimal regularization strength $\alpha$.
+   - By comparing the unregularized OLS elasticity against the regularized Ridge elasticity, the tool flags SKUs that diverge significantly (e.g. >30% relative difference). This divergence typically occurs on SKUs with sparse or noisy data where OLS overfits, providing a critical reliability check for business stakeholders.
+   - The estimator calculates optimal price points for Revenue and Margin maximization.
+   - **Constrained Price Optimization (`constrained_optimizer.py`)**: Uses `scipy.optimize.minimize_scalar` bounded search to calculate a "Constrained Optimal Price" that maximizes revenue strictly subject to a minimum margin floor (e.g. 30%). This prevents the simulation from recommending highly elastic price cuts that destroy profitability.
    - Writes the results directly to the SQLite table `elasticity_results`.
+
+3. **Cross-Price Elasticity (`cross_price_elasticity.py`)**
+   - Identifies overlapping SKU pairs and models them using an extended log-log regression: $\log(Q_A) = \beta_0 + \beta_1\log(P_A) + \beta_2\log(P_B) + \beta_3\text{Promo}_A$.
+   - Programmatically pairs SKUs with the highest co-occurrence of sales weeks. (Note: Since the dataset is synthetic and lacks explicit product hierarchy categories, time-series overlap is used as a proxy for co-purchase viability).
+   - Evaluates the cross-price coefficient $\beta_2$ to classify pairs statistically as Substitutes ($\beta_2 > 0$) or Complements ($\beta_2 < 0$), writing findings to `cross_price_elasticity` in the DB. Given the limited sample size of tested pairs, these results serve as an exploratory framework for broader category management.
 
 3. **SQL Analytics Layer**
    - We utilize a local **SQLite database** (`pricing_simulator.db`) mapped via **SQLAlchemy**. SQLite was chosen because it allows for full standard SQL analytical capabilities without requiring external server setup or networking overhead, making the tool portable and fast.

@@ -21,3 +21,16 @@ def test_find_optimal_prices():
     df = simulate_financials(100, 10, 6, -3.0)
     opts = find_optimal_prices(df)
     assert opts['Revenue_Max_Change'] < 0
+
+from constrained_optimizer import find_constrained_optimal_price
+
+def test_constrained_optimal_price():
+    current_vol = 100
+    current_price = 10.0
+    unit_cost = 8.0
+    elasticity = -2.5
+    constrained_price, _ = find_constrained_optimal_price(current_vol, current_price, unit_cost, elasticity, min_margin_pct=0.30)
+    margin_pct = (constrained_price - unit_cost) / constrained_price
+    assert margin_pct >= 0.299
+    assert constrained_price > current_price
+

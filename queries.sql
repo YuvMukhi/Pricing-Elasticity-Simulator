@@ -96,4 +96,4 @@ FROM MonthlyRev
 ORDER BY sku, month;
 
 -- @name: portfolio_overview
-SELECT sku, description, elasticity, current_price, rev_optimal_price, margin_optimal_price, rev_upside, margin_upside, CASE WHEN current_price > margin_optimal_price * 1.05 THEN 'Overpriced' WHEN current_price < margin_optimal_price * 0.95 THEN 'Underpriced' ELSE 'Near-Optimal' END as pricing_status FROM elasticity_results WHERE reliability_flag = 1 ORDER BY rev_upside DESC;
+SELECT sku, description, elasticity, current_price, rev_optimal_price, margin_optimal_price, constrained_optimal_price, rev_upside, margin_upside, divergence_flag, CASE WHEN current_price > margin_optimal_price * 1.05 THEN 'Overpriced' WHEN current_price < margin_optimal_price * 0.95 THEN 'Underpriced' ELSE 'Near-Optimal' END as pricing_status FROM elasticity_results WHERE reliability_flag = 1 ORDER BY rev_upside DESC;
